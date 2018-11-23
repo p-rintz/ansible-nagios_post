@@ -1,0 +1,109 @@
+#!/usr/bin/python
+# Copyright: (c) 2018, Philipp Rintz <philipp@rintz.net>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# Ansible Module for Nagios Integration via HTTP Post requests
+
+DOCUMENTATION = '''
+---
+module: nagios_post
+
+author: "Philipp Rintz (https://github.com/p-rintz)"
+
+short_description: Ansible Module for Nagios integration via Post requests.
+
+description:
+  - Ansible Module for Nagios integration via Post requests. Features implemented: silence/unsilence
+
+version_added: "2.6"
+
+options:
+  action:
+   description:
+    - What action the module should undertake
+   choice: ["silence", "unsilence"]
+
+  nagios_host:
+   description:
+    - Nagios Host as full http string, up to cmd.cgi e.g. "https://nagioshost.com/nagios/cgi-bin/cmd.cgi"
+   required: true
+   default: status
+
+'''
+
+EXAMPLES = '''
+   - name: Silence host
+     nagios_post:
+       nagios_host=https://localhost.testing/nagios/cgi-bin/cmd.cgi
+       target_host=sometargethostname
+       action=silence
+
+   - name: Silence nagios
+     delegate_to: localhost
+     nagios_post:
+       nagios_host=http://nagios.via.de/nagios/cgi-bin/cmd.cgi
+       auth=true
+       target_host=productionhost
+       action=unsilence
+       user=nagiosuser
+       password=somerandompassword
+     run_once: true
+
+'''
+
+#####################################################################################################
+
+
+from ansible.module_utils.basic import *
+import requests
+
+def post(url, payload, payloadsvc):
+        if module.params['auth'] == 'true':
+                stdout = requests.post(url, data=payload, auth=requests.auth.HTTPBasicAuth('%s' % module.params['user'], '%s' % module.params['password']))
+                stdoutsvc = requests.post(url, data=payloadsvc, auth=requests.auth.HTTPBasicAuth('%s' % module.params['user'], '%s' % module.params['password']))
+        else:
+                stdout = requests.post(url, data=payload)
+                stdoutsvc = requests.post(url, data=payloadsvc)
+        if stdout.status_code == 200:
+                module.exit_json(changed=False, responce="Success")
+        else:
+                msg = 'Status code was not 200 :: Responded Status code %s' % (stdout.status_code,)
+                module.fail_json(msg=msg)
+
+def main():
+        global module
+        module = AnsibleModule(
+                argument_spec  = dict(
+                        nagios_host  = dict(required=True, type='str'),
+                        target_host  = dict(required=True, type='str'),
+                        user = dict(required=False, type='str'),
+                        password = dict(required=False, type='str', no_log=True),
+                        auth = dict(required=False, default='false', type='str'),
+                        action = dict(required=True, type='str', choice=["silence", "unsilence"])
+                        )
+                )
+        if module.params['action'] == "silence" and module.params['auth'] == 'true':
+                url = module.params['nagios_host']
+                payload = {'cmd_typ': '25', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                payloadsvc = {'cmd_typ': '29', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                post(url, payload, payloadsvc)
+
+        if module.params['action'] == "silence" and module.params['auth'] == 'false':
+                url = module.params['nagios_host']
+                payload = {'cmd_typ': '25', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                payloadsvc = {'cmd_typ': '29', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                post(url, payload, payloadsvc)
+
+        if module.params['action'] == "unsilence" and module.params['auth'] == 'true':
+                url = module.params['nagios_host']
+                payload = {'cmd_typ': '24', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                payloadsvc = {'cmd_typ': '28', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                post(url, payload, payloadsvc)
+
+        if module.params['action'] == "unsilence" and module.params['auth'] == 'false':
+                url = module.params['nagios_host']
+                payload = {'cmd_typ': '24', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                payloadsvc = {'cmd_typ': '28', 'cmd_mod': '2', 'host': '%s' % module.params['target_host'], 'btnSubmit': 'Commit'}
+                post(url, payload, payloadsvc)
+
+if __name__ == '__main__':
+        main()
